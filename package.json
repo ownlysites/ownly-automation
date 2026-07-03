@@ -1,0 +1,16 @@
+{
+  "name": "leadpulse-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LeadPulse AI — Automated sales engine that transforms a website URL into qualified leads and outreach",
+  "scripts": {
+    "dev:frontend": "cd frontend && bun dev",
+    "build:frontend": "cd frontend && bun run build",
+    "supabase:start": "cd backend && supabase start",
+    "supabase:stop": "cd backend && supabase stop",
+    "supabase:push": "cd backend && supabase db push",
+    "supabase:migrate": "cd backend && supabase migration new"
+  },
+  "keywords": ["lead-generation", "ai", "outreach", "sales-automation", "supabase"],
+  "license": "UNLICENSED"
+}

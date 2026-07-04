@@ -1,6 +1,9 @@
 // AI prompt templates for lead research and outreach generation
 // These are used by Edge Functions and the local analysis pipeline
 
+// Official LeadPulse AI email — used in outreach generation
+export const LEADPULSE_EMAIL = 'leadpulse-ai-6e22117f@ctomail.io';
+
 // ============================================================
 // BUSINESS ANALYSIS PROMPT (Enhanced)
 // Used by the analyze-business function / script
@@ -105,6 +108,7 @@ Write a personalized outreach {channel} message for the following lead on behalf
 BUSINESS:
 Name: {business_name}
 Value Props: {value_props}
+Reply-To Email: leadpulse-ai-6e22117f@ctomail.io
 
 LEAD:
 Company: {company_name}
@@ -120,11 +124,13 @@ Requirements:
 - Clear, soft CTA (e.g., "Would you be open to a quick chat?")
 - No generic templates or spammy language
 - Subject line should be curiosity-driven, not salesy
+- Email should come from leadpulse-ai-6e22117f@ctomail.io on behalf of the business
 
 Return a JSON object:
 {
   "subject": "...",
-  "body": "..."
+  "body": "...",
+  "from_email": "leadpulse-ai-6e22117f@ctomail.io"
 }
 
 Return ONLY valid JSON, no markdown fencing.`;

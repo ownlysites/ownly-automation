@@ -1,54 +1,104 @@
 // AI prompt templates for lead research and outreach generation
-// These are used by Edge Functions to generate content via OpenAI/Gemini
+// These are used by Edge Functions and the local analysis pipeline
 
-export const BUSINESS_ANALYSIS_PROMPT = `
-You are a market research analyst for LeadPulse AI.
+// ============================================================
+// BUSINESS ANALYSIS PROMPT (Enhanced)
+// Used by the analyze-business function / script
+// ============================================================
+export const BUSINESS_ANALYSIS_PROMPT = `You are a senior market research analyst working for LeadPulse AI, a B2B sales intelligence platform.
 
-Given the following business website URL and any scraped content, analyze the business and return a JSON object with:
+Your task is to analyze a company based on their website content and produce a structured business analysis. Be specific, actionable, and data-driven. Do NOT be generic — infer details from the website content.
 
-1. "industry": The primary industry this business operates in
-2. "description": A 2-3 sentence summary of what the business does
-3. "target_audience": An object with:
-   - "primary": Description of the ideal customer profile
-   - "demographics": Key demographic traits
-   - "pain_points": Array of 3-5 pain points this audience faces
-   - "buying_signals": Array of 3-5 signals that indicate purchase intent
-4. "value_props": Array of 3-5 unique value propositions this business offers
-5. "market_analysis": An object with:
-   - "competitors": Array of 3-5 likely competitor types (not specific names)
-   - "market_size": Estimated market size category (niche/moderate/large)
-   - "growth_trends": 2-3 sentence summary of growth trends
-   - "opportunities": Array of 2-3 untapped opportunities
+WEBSITE URL: {website_url}
 
-Website URL: {website_url}
-Scraped content: {scraped_content}
+WEBSITE CONTENT:
+{scraped_content}
 
-Return ONLY valid JSON, no markdown fencing.
-`;
+Analyze this business and return a JSON object with EXACTLY this structure:
 
-export const LEAD_DISCOVERY_PROMPT = `
-You are a lead generation specialist for LeadPulse AI.
+{
+  "name": "The company's name (from the website)",
+  "industry": "Primary industry (e.g., 'SaaS', 'Digital Marketing Agency', 'Management Consulting')",
+  "description": "2-3 sentence summary of what the business does, their core offering, and who they serve",
+  "target_audience": {
+    "primary": "Detailed description of the ideal customer profile (ICP). Be specific about company size, role, and needs.",
+    "demographics": {
+      "company_size": "e.g., '10-200 employees' or 'Enterprise (1000+)'",
+      "roles": ["Decision-maker job titles who would buy this"],
+      "geographies": "Primary markets if mentioned or implied",
+      "industries": ["Target industries"]
+    },
+    "pain_points": [
+      "Specific pain point 1 this audience faces",
+      "Specific pain point 2",
+      "Specific pain point 3",
+      "Specific pain point 4",
+      "Specific pain point 5"
+    ],
+    "buying_signals": [
+      "Signal that indicates this prospect is in-market (e.g., 'Recently raised funding')",
+      "Signal 2",
+      "Signal 3",
+      "Signal 4",
+      "Signal 5"
+    ]
+  },
+  "value_props": [
+    "Unique value proposition 1 — what makes them different",
+    "Value proposition 2",
+    "Value proposition 3",
+    "Value proposition 4",
+    "Value proposition 5"
+  ],
+  "market_analysis": {
+    "competitors": [
+      "Competitor type/category 1 (not specific company names unless mentioned on site)",
+      "Competitor type/category 2",
+      "Competitor type/category 3"
+    ],
+    "market_size": "One of: niche, moderate, large, enterprise",
+    "growth_trends": "2-3 sentence summary of industry growth trends and market direction",
+    "opportunities": [
+      "Untapped opportunity 1 this business could pursue",
+      "Untapped opportunity 2",
+      "Untapped opportunity 3"
+    ]
+  }
+}
 
-Based on the following business analysis, identify potential lead companies that would be ideal prospects.
+IMPORTANT:
+- Be specific to THIS company, not generic industry observations
+- If information is not directly stated, make educated inferences from context clues
+- Pain points and buying signals should be actionable for sales outreach
+- Value propositions should differentiate from generic alternatives
+- Return ONLY valid JSON, no markdown code fencing, no extra text`;
 
-Business: {business_name}
-Industry: {industry}
-Target Audience: {target_audience}
-Value Props: {value_props}
+// ============================================================
+// LEAD DISCOVERY PROMPT
+// ============================================================
+export const LEAD_DISCOVERY_PROMPT = `You are a lead generation specialist for LeadPulse AI.
+
+Based on the following business analysis, identify 10 potential lead companies that would be ideal prospects for this business. Think about companies that match the ICP and are likely experiencing the pain points described.
+
+BUSINESS: {business_name}
+INDUSTRY: {industry}
+TARGET AUDIENCE: {target_audience}
+VALUE PROPS: {value_props}
 
 For each lead, provide:
-1. "company_name": Likely company name or type
+1. "company_name": A realistic company name or specific company type
 2. "industry": Their industry
-3. "estimated_employee_count": Approximate size
+3. "estimated_employee_count": Approximate employee count (number)
 4. "why_good_fit": 1-2 sentence explanation of why they're a good fit
 5. "intent_signals": Array of 2-3 signals suggesting they might be in-market
 6. "suggested_approach": Brief note on best outreach angle
 
-Return a JSON array of 10 leads. Return ONLY valid JSON, no markdown fencing.
-`;
+Return a JSON array of 10 leads. Return ONLY valid JSON, no markdown fencing.`;
 
-export const OUTREACH_GENERATION_PROMPT = `
-You are a sales copywriter for LeadPulse AI.
+// ============================================================
+// OUTREACH GENERATION PROMPT
+// ============================================================
+export const OUTREACH_GENERATION_PROMPT = `You are a sales copywriter for LeadPulse AI.
 
 Write a personalized outreach {channel} message for the following lead on behalf of the business.
 
@@ -77,11 +127,12 @@ Return a JSON object:
   "body": "..."
 }
 
-Return ONLY valid JSON, no markdown fencing.
-`;
+Return ONLY valid JSON, no markdown fencing.`;
 
-export const LEAD_SCORING_PROMPT = `
-You are a lead scoring analyst for LeadPulse AI.
+// ============================================================
+// LEAD SCORING PROMPT
+// ============================================================
+export const LEAD_SCORING_PROMPT = `You are a lead scoring analyst for LeadPulse AI.
 
 Score this lead from 0-100 based on how likely they are to convert.
 
@@ -113,5 +164,4 @@ Return a JSON object:
   "reasoning": "<1-2 sentence explanation>"
 }
 
-Return ONLY valid JSON, no markdown fencing.
-`;
+Return ONLY valid JSON, no markdown fencing.`;

@@ -1,11 +1,14 @@
 // Edge Function: analyze-business
-// Takes a website URL, scrapes the site, and generates a business analysis using AI
+// Takes a website URL, scrapes the site (ZenRows + fetch fallback), and generates a business analysis using AI
 // This is the entry point for the LeadPulse AI pipeline (Supabase Edge Function version)
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../lib/cors.ts';
 import { getSupabaseClient, getSupabaseAdminClient } from '../lib/supabase.ts';
 import { BUSINESS_ANALYSIS_PROMPT } from '../lib/ai.ts';
+
+// Official LeadPulse AI email
+const LEADPULSE_EMAIL = 'leadpulse-ai-6e22117f@ctomail.io';
 
 serve(async (req) => {
   // Handle CORS
@@ -30,7 +33,7 @@ serve(async (req) => {
       );
     }
 
-    // Step 1: Scrape website content
+    // Step 1: Scrape website content (ZenRows primary, fetch fallback)
     const scrapedContent = await scrapeWebsite(website_url);
 
     if (!scrapedContent || scrapedContent.length < 50) {
@@ -49,6 +52,7 @@ serve(async (req) => {
 
     // Step 3: Save/update business record
     const adminClient = getSupabaseAdminClient();
+    let savedBusinessId = business_id;
 
     if (business_id) {
       // Update existing business
@@ -83,11 +87,11 @@ serve(async (req) => {
         .single();
 
       if (error) throw error;
-      business_id === data?.id; // Return the new ID
+      savedBusinessId = data?.id;
     }
 
     return new Response(
-      JSON.stringify({ success: true, analysis, business_id }),
+      JSON.stringify({ success: true, analysis, business_id: savedBusinessId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
@@ -99,75 +103,103 @@ serve(async (req) => {
 });
 
 // ============================================================
-// Web Scraper (Deno-compatible — uses Deno's native fetch)
+// WEB SCRAPER — ZenRows primary, fetch fallback
 // ============================================================
 async function scrapeWebsite(url: string): Promise<string> {
   const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
+  const zenrowsApiKey = Deno.env.get('ZENROWS_API_KEY');
 
-  // Scrape homepage
-  const homepageContent = await scrapePage(normalizedUrl);
-
-  // Find key subpages from the homepage
-  const subpageUrls = findSubpageUrls(homepageContent, normalizedUrl);
-
-  // Scrape up to 3 subpages
-  const subpageContents = await Promise.all(
-    subpageUrls.slice(0, 3).map(u => scrapePage(u))
-  );
-
-  // Combine content
-  const allContent = [homepageContent.text];
-  for (const page of subpageContents) {
-    if (page.text && page.text.length > 50) {
-      allContent.push(`\n--- ${page.title} ---\n${page.text}`);
+  // Try ZenRows first if API key is available
+  if (zenrowsApiKey) {
+    try {
+      const content = await scrapeWithZenRows(normalizedUrl, zenrowsApiKey);
+      if (content.text && content.text.length > 50) {
+        // Also scrape subpages
+        const subpages = await discoverAndScrapeSubpages(content.html, normalizedUrl, zenrowsApiKey);
+        return combineContent(content, subpages);
+      }
+    } catch (e) {
+      console.error('ZenRows failed, falling back to fetch:', e);
     }
   }
 
-  return allContent.join('\n').slice(0, 30000);
+  // Fallback: direct fetch
+  const homepage = await scrapeWithFetch(normalizedUrl);
+  if (!homepage.text || homepage.text.length < 50) {
+    return homepage.text || '';
+  }
+
+  const subpages = await discoverAndScrapeSubpagesFetch(homepage.html, normalizedUrl);
+  return combineContent(homepage, subpages);
 }
 
-async function scrapePage(url: string): Promise<{ title: string; text: string; html: string }> {
+// ZenRows scraper
+async function scrapeWithZenRows(url: string, apiKey: string): Promise<{ title: string; text: string; html: string }> {
+  const zenrowsUrl = new URL('https://api.zenrows.com/v1/');
+  zenrowsUrl.searchParams.set('url', url);
+  zenrowsUrl.searchParams.set('apikey', apiKey);
+  zenrowsUrl.searchParams.set('js_render', 'true');
+  zenrowsUrl.searchParams.set('antibot', 'true');
+
+  const response = await fetch(zenrowsUrl.toString(), {
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`ZenRows HTTP ${response.status}: ${errorBody.slice(0, 200)}`);
+  }
+
+  const html = await response.text();
+  return parseHtmlSimple(html);
+}
+
+// Fetch-based scraper
+async function scrapeWithFetch(url: string): Promise<{ title: string; text: string; html: string }> {
   try {
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; LeadPulseAI/1.0)',
         Accept: 'text/html',
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) return { title: '', text: '', html: '' };
 
     const html = await response.text();
-
-    // Extract title
-    const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim() : '';
-
-    // Remove scripts, styles, nav, etc.
-    let text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-      .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-      .replace(/<header[\s\S]*?<\/header>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    return { title, text, html };
+    return parseHtmlSimple(html);
   } catch {
     return { title: '', text: '', html: '' };
   }
 }
 
-function findSubpageUrls(page: { html: string }, baseUrl: string): string[] {
+// Simple HTML parser (Deno-compatible, no cheerio)
+function parseHtmlSimple(html: string): { title: string; text: string; html: string } {
+  const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+  const title = titleMatch ? titleMatch[1].trim() : '';
+
+  let text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+    .replace(/<header[\s\S]*?<\/header>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { title, text, html };
+}
+
+// Subpage discovery from links
+function findSubpageUrls(html: string, baseUrl: string): string[] {
   const patterns = [/about/i, /services/i, /products/i, /solutions/i, /features/i];
   const links: string[] = [];
 
@@ -176,7 +208,7 @@ function findSubpageUrls(page: { html: string }, baseUrl: string): string[] {
     const hrefRegex = /href=["']([^"']+)["']/gi;
     let match;
 
-    while ((match = hrefRegex.exec(page.html)) !== null) {
+    while ((match = hrefRegex.exec(html)) !== null) {
       const href = match[1];
       if (patterns.some(p => p.test(href))) {
         try {
@@ -189,7 +221,30 @@ function findSubpageUrls(page: { html: string }, baseUrl: string): string[] {
     }
   } catch { /* skip */ }
 
-  return [...new Set(links)];
+  return [...new Set(links)].slice(0, 3);
+}
+
+async function discoverAndScrapeSubpages(html: string, baseUrl: string, apiKey: string) {
+  const urls = findSubpageUrls(html, baseUrl);
+  return Promise.all(urls.map(u => scrapeWithZenRows(u, apiKey)));
+}
+
+async function discoverAndScrapeSubpagesFetch(html: string, baseUrl: string) {
+  const urls = findSubpageUrls(html, baseUrl);
+  return Promise.all(urls.map(u => scrapeWithFetch(u)));
+}
+
+function combineContent(
+  homepage: { title: string; text: string },
+  subpages: { title: string; text: string }[]
+): string {
+  const parts = [homepage.text];
+  for (const page of subpages) {
+    if (page.text && page.text.length > 50) {
+      parts.push(`\n--- ${page.title} ---\n${page.text}`);
+    }
+  }
+  return parts.join('\n').slice(0, 30000);
 }
 
 // ============================================================
@@ -230,7 +285,6 @@ async function callOpenAI(prompt: string, apiKey: string): Promise<any> {
     const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) return JSON.parse(jsonMatch[1]);
 
-    // Try to find JSON object in text
     const objMatch = content.match(/\{[\s\S]*\}/);
     if (objMatch) return JSON.parse(objMatch[0]);
 

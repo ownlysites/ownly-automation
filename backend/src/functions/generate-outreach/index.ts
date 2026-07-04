@@ -5,7 +5,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders, handleCors } from '../lib/cors.ts';
 import { getSupabaseClient, getSupabaseAdminClient } from '../lib/supabase.ts';
-import { OUTREACH_GENERATION_PROMPT } from '../lib/ai.ts';
+import { OUTREACH_GENERATION_PROMPT, LEADPULSE_EMAIL } from '../lib/ai.ts';
 
 serve(async (req) => {
   const corsResponse = handleCors(req);
